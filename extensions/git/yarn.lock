@@ -36,10 +36,10 @@
   resolved "https://registry.yarnpkg.com/@types/which/-/which-1.0.28.tgz#016e387629b8817bed653fe32eab5d11279c8df6"
   integrity sha1-AW44dim4gXvtZT/jLqtdESecjfY=
 
-"@vscode/extension-telemetry@0.4.6":
-  version "0.4.6"
-  resolved "https://registry.yarnpkg.com/@vscode/extension-telemetry/-/extension-telemetry-0.4.6.tgz#2f4c5bf81adf6b2e4ddba54759355e1559c5476b"
-  integrity sha512-bDXwHoNXIR1Rc8xdphJ4B3rWdzAGm+FUPk4mJl6/oyZmfEX+QdlDLxnCwlv/vxHU1p11ThHSB8kRhsWZ1CzOqw==
+"@vscode/extension-telemetry@0.5.2":
+  version "0.5.2"
+  resolved "https://registry.yarnpkg.com/@vscode/extension-telemetry/-/extension-telemetry-0.5.2.tgz#b008888cbfbbebdde1f2ac86bffe74057add8c25"
+  integrity sha512-SiAv2PVXdNyHIx/CoOEKqzldy3Xh+3W2viy7bfSYs/SQZ4kZPAoi3JPVBg2SGpMZtQWcvyLFkLPsHYpSJYMq5Q==
 
 "@vscode/iconv-lite-umd@0.7.0":
   version "0.7.0"
