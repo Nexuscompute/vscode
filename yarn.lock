@@ -8095,10 +8095,6 @@ os-locale@^3.1.0:
   version "3.1.0"
   resolved "https://registry.yarnpkg.com/os-locale/-/os-locale-3.1.0.tgz#a802a6ee17f24c10483ab9935719cef4ed16bf1a"
   integrity sha512-Z8l3R4wYWM40/52Z+S265okfFj8Kt2cC2MKY+xNi3kFs+XGI7WXu/I309QQQYbRW4ijiZ+yxs9pqEhJh0DqW3Q==
-  dependencies:
-    execa "^1.0.0"
-    lcid "^2.0.0"
-    mem "^4.0.0"
 
 os-tmpdir@^1.0.0, os-tmpdir@~1.0.2:
   version "1.0.2"
@@ -11699,10 +11695,10 @@ xterm-headless@5.1.0-beta.63:
   resolved "https://registry.yarnpkg.com/xterm-headless/-/xterm-headless-5.1.0-beta.63.tgz#0b152dbd356fdb2426b387759630946806fb223e"
   integrity sha512-jNh5ZPQLUUVdAmkjiyhv4XBUWM9WIaz48JwK3fMiZKFYg8+VjN4my+AnoqhMhZy+BOmB+9NWWqb80KTVhQ4GDA==
 
-xterm@5.1.0-beta.63:
-  version "5.1.0-beta.63"
-  resolved "https://registry.yarnpkg.com/xterm/-/xterm-5.1.0-beta.63.tgz#c811680494922eab873bd36ac6fd9f5404a9e944"
-  integrity sha512-ar7SMARh6j3GUXb4tRgbqAO+kiNu4JTPx5FYXSDHr+HHt0jBgZ+lPh4AqIFwwG1pc90lRx2cvczpE5cJhG9sdw==
+xterm@5.1.0:
+  version "5.1.0"
+  resolved "https://registry.yarnpkg.com/xterm/-/xterm-5.1.0.tgz#3e160d60e6801c864b55adf19171c49d2ff2b4fc"
+  integrity sha512-LovENH4WDzpwynj+OTkLyZgJPeDom9Gra4DMlGAgz6pZhIDCQ+YuO7yfwanY+gVbn/mmZIStNOnVRU/ikQuAEQ==
 
 y18n@^3.2.1:
   version "3.2.2"
