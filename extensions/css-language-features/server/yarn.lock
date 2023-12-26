@@ -17,6 +17,11 @@
   resolved "https://registry.yarnpkg.com/@vscode/l10n/-/l10n-0.0.10.tgz#9c513107c690c0dd16e3ec61e453743de15ebdb0"
   integrity sha512-E1OCmDcDWa0Ya7vtSjp/XfHFGqYJfh+YPC1RkATU71fTac+j1JjCcB3qwSzmlKAighx2WxhLlfhS0RwAN++PFQ==
 
+"@vscode/l10n@^0.0.17":
+  version "0.0.17"
+  resolved "https://registry.yarnpkg.com/@vscode/l10n/-/l10n-0.0.17.tgz#f12caff94c1985de5e6c6e7e704fb26381941f7e"
+  integrity sha512-ilT9j32+bI5FcP3TlfO3fhM39VF+qQZuxmZfUn0ABkntyJMEDREw3OKBT7ySfUCkc5ijgDjZF7KCeolfB3OVzA==
+
 vscode-css-languageservice@^6.2.1:
   version "6.2.1"
   resolved "https://registry.yarnpkg.com/vscode-css-languageservice/-/vscode-css-languageservice-6.2.1.tgz#0d86683ecac04d81cb973211a9e22c2d6c6eeba7"
