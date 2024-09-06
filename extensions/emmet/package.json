@@ -486,8 +486,8 @@
     "@emmetio/html-matcher": "^0.3.3",
     "@emmetio/math-expression": "^1.0.5",
     "@vscode/emmet-helper": "^2.8.8",
-    "image-size": "~1.0.0",
-    "vscode-languageserver-textdocument": "^1.0.1"
+    "image-size": "~1.1.1",
+    "vscode-languageserver-textdocument": "^1.0.11"
   },
   "capabilities": {
     "virtualWorkspaces": true,
