@@ -26,7 +26,7 @@ declare module 'vscode' {
 		 */
 		onDidChangeHistoryItemRefs: Event<SourceControlHistoryItemRefsChangeEvent>;
 
-		provideHistoryItemRefs(token: CancellationToken): ProviderResult<SourceControlHistoryItemRef[]>;
+		provideHistoryItemRefs(historyItemRefs: string[] | undefined, token: CancellationToken): ProviderResult<SourceControlHistoryItemRef[]>;
 		provideHistoryItems(options: SourceControlHistoryOptions, token: CancellationToken): ProviderResult<SourceControlHistoryItem[]>;
 		provideHistoryItemChanges(historyItemId: string, historyItemParentId: string | undefined, token: CancellationToken): ProviderResult<SourceControlHistoryItemChange[]>;
 
@@ -51,6 +51,7 @@ declare module 'vscode' {
 		readonly message: string;
 		readonly displayId?: string;
 		readonly author?: string;
+		readonly authorEmail?: string;
 		readonly timestamp?: number;
 		readonly statistics?: SourceControlHistoryItemStatistics;
 		readonly references?: SourceControlHistoryItemRef[];

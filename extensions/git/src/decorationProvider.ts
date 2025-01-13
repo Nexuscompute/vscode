@@ -3,13 +3,23 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { window, workspace, Uri, Disposable, Event, EventEmitter, FileDecoration, FileDecorationProvider, ThemeColor, l10n } from 'vscode';
+import { window, workspace, Uri, Disposable, Event, EventEmitter, FileDecoration, FileDecorationProvider, ThemeColor, l10n, SourceControlHistoryItemRef } from 'vscode';
 import * as path from 'path';
 import { Repository, GitResourceGroup } from './repository';
 import { Model } from './model';
 import { debounce } from './decorators';
 import { filterEvent, dispose, anyEvent, fireEvent, PromiseSource, combinedDisposable, runAndSubscribeEvent } from './util';
 import { Change, GitErrorCodes, Status } from './api/git';
+
+function equalSourceControlHistoryItemRefs(ref1?: SourceControlHistoryItemRef, ref2?: SourceControlHistoryItemRef): boolean {
+	if (ref1 === ref2) {
+		return true;
+	}
+
+	return ref1?.id === ref2?.id &&
+		ref1?.name === ref2?.name &&
+		ref1?.revision === ref2?.revision;
+}
 
 class GitIgnoreDecorationProvider implements FileDecorationProvider {
 
@@ -108,11 +118,11 @@ class GitDecorationProvider implements FileDecorationProvider {
 	private onDidRunGitStatus(): void {
 		const newDecorations = new Map<string, FileDecoration>();
 
-		this.collectSubmoduleDecorationData(newDecorations);
 		this.collectDecorationData(this.repository.indexGroup, newDecorations);
 		this.collectDecorationData(this.repository.untrackedGroup, newDecorations);
 		this.collectDecorationData(this.repository.workingTreeGroup, newDecorations);
 		this.collectDecorationData(this.repository.mergeGroup, newDecorations);
+		this.collectSubmoduleDecorationData(newDecorations);
 
 		const uris = new Set([...this.decorations.keys()].concat([...newDecorations.keys()]));
 		this.decorations = newDecorations;
@@ -158,7 +168,10 @@ class GitIncomingChangesFileDecorationProvider implements FileDecorationProvider
 	private readonly _onDidChangeDecorations = new EventEmitter<Uri[]>();
 	readonly onDidChangeFileDecorations: Event<Uri[]> = this._onDidChangeDecorations.event;
 
-	private decorations = new Map<string, FileDecoration>();
+	private _currentHistoryItemRef: SourceControlHistoryItemRef | undefined;
+	private _currentHistoryItemRemoteRef: SourceControlHistoryItemRef | undefined;
+
+	private _decorations = new Map<string, FileDecoration>();
 	private readonly disposables: Disposable[] = [];
 
 	constructor(private readonly repository: Repository) {
@@ -169,11 +182,23 @@ class GitIncomingChangesFileDecorationProvider implements FileDecorationProvider
 	}
 
 	private async onDidChangeCurrentHistoryItemRefs(): Promise<void> {
-		const newDecorations = new Map<string, FileDecoration>();
-		await this.collectIncomingChangesFileDecorations(newDecorations);
-		const uris = new Set([...this.decorations.keys()].concat([...newDecorations.keys()]));
+		const historyProvider = this.repository.historyProvider;
+		const currentHistoryItemRef = historyProvider.currentHistoryItemRef;
+		const currentHistoryItemRemoteRef = historyProvider.currentHistoryItemRemoteRef;
 
-		this.decorations = newDecorations;
+		if (equalSourceControlHistoryItemRefs(this._currentHistoryItemRef, currentHistoryItemRef) &&
+			equalSourceControlHistoryItemRefs(this._currentHistoryItemRemoteRef, currentHistoryItemRemoteRef)) {
+			return;
+		}
+
+		const decorations = new Map<string, FileDecoration>();
+		await this.collectIncomingChangesFileDecorations(decorations);
+		const uris = new Set([...this._decorations.keys()].concat([...decorations.keys()]));
+
+		this._decorations = decorations;
+		this._currentHistoryItemRef = currentHistoryItemRef;
+		this._currentHistoryItemRemoteRef = currentHistoryItemRemoteRef;
+
 		this._onDidChangeDecorations.fire([...uris.values()].map(value => Uri.parse(value, true)));
 	}
 
@@ -238,7 +263,7 @@ class GitIncomingChangesFileDecorationProvider implements FileDecorationProvider
 	}
 
 	provideFileDecoration(uri: Uri): FileDecoration | undefined {
-		return this.decorations.get(uri.toString());
+		return this._decorations.get(uri.toString());
 	}
 
 	dispose(): void {
@@ -248,6 +273,7 @@ class GitIncomingChangesFileDecorationProvider implements FileDecorationProvider
 
 export class GitDecorations {
 
+	private enabled = false;
 	private disposables: Disposable[] = [];
 	private modelDisposables: Disposable[] = [];
 	private providers = new Map<Repository, Disposable>();
@@ -261,13 +287,19 @@ export class GitDecorations {
 	}
 
 	private update(): void {
-		const enabled = workspace.getConfiguration('git').get('decorations.enabled');
+		const config = workspace.getConfiguration('git');
+		const enabled = config.get<boolean>('decorations.enabled') === true;
+		if (this.enabled === enabled) {
+			return;
+		}
 
 		if (enabled) {
 			this.enable();
 		} else {
 			this.disable();
 		}
+
+		this.enabled = enabled;
 	}
 
 	private enable(): void {

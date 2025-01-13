@@ -6,20 +6,22 @@
 
 import { Disposable, Event, EventEmitter, FileDecoration, FileDecorationProvider, SourceControlHistoryItem, SourceControlHistoryItemChange, SourceControlHistoryOptions, SourceControlHistoryProvider, ThemeIcon, Uri, window, LogOutputChannel, SourceControlHistoryItemRef, l10n, SourceControlHistoryItemRefsChangeEvent } from 'vscode';
 import { Repository, Resource } from './repository';
-import { IDisposable, deltaHistoryItemRefs, dispose, filterEvent } from './util';
+import { IDisposable, deltaHistoryItemRefs, dispose, filterEvent, getCommitShortHash } from './util';
 import { toGitUri } from './uri';
 import { Branch, LogOptions, Ref, RefType } from './api/git';
 import { emojify, ensureEmojis } from './emoji';
 import { Commit } from './git';
 import { OperationKind, OperationResult } from './operation';
 
-function toSourceControlHistoryItemRef(ref: Ref): SourceControlHistoryItemRef {
+function toSourceControlHistoryItemRef(repository: Repository, ref: Ref): SourceControlHistoryItemRef {
+	const rootUri = Uri.file(repository.root);
+
 	switch (ref.type) {
 		case RefType.RemoteHead:
 			return {
 				id: `refs/remotes/${ref.name}`,
 				name: ref.name ?? '',
-				description: ref.commit ? l10n.t('Remote branch at {0}', ref.commit.substring(0, 8)) : undefined,
+				description: ref.commit ? l10n.t('Remote branch at {0}', getCommitShortHash(rootUri, ref.commit)) : undefined,
 				revision: ref.commit,
 				icon: new ThemeIcon('cloud'),
 				category: l10n.t('remote branches')
@@ -28,7 +30,7 @@ function toSourceControlHistoryItemRef(ref: Ref): SourceControlHistoryItemRef {
 			return {
 				id: `refs/tags/${ref.name}`,
 				name: ref.name ?? '',
-				description: ref.commit ? l10n.t('Tag at {0}', ref.commit.substring(0, 8)) : undefined,
+				description: ref.commit ? l10n.t('Tag at {0}', getCommitShortHash(rootUri, ref.commit)) : undefined,
 				revision: ref.commit,
 				icon: new ThemeIcon('tag'),
 				category: l10n.t('tags')
@@ -37,12 +39,35 @@ function toSourceControlHistoryItemRef(ref: Ref): SourceControlHistoryItemRef {
 			return {
 				id: `refs/heads/${ref.name}`,
 				name: ref.name ?? '',
-				description: ref.commit ? ref.commit.substring(0, 8) : undefined,
+				description: ref.commit ? getCommitShortHash(rootUri, ref.commit) : undefined,
 				revision: ref.commit,
 				icon: new ThemeIcon('git-branch'),
 				category: l10n.t('branches')
 			};
 	}
+}
+
+function compareSourceControlHistoryItemRef(ref1: SourceControlHistoryItemRef, ref2: SourceControlHistoryItemRef): number {
+	const getOrder = (ref: SourceControlHistoryItemRef): number => {
+		if (ref.id.startsWith('refs/heads/')) {
+			return 1;
+		} else if (ref.id.startsWith('refs/remotes/')) {
+			return 2;
+		} else if (ref.id.startsWith('refs/tags/')) {
+			return 3;
+		}
+
+		return 99;
+	};
+
+	const ref1Order = getOrder(ref1);
+	const ref2Order = getOrder(ref2);
+
+	if (ref1Order !== ref2Order) {
+		return ref1Order - ref2Order;
+	}
+
+	return ref1.name.localeCompare(ref2.name);
 }
 
 export class GitHistoryProvider implements SourceControlHistoryProvider, FileDecorationProvider, IDisposable {
@@ -65,7 +90,7 @@ export class GitHistoryProvider implements SourceControlHistoryProvider, FileDec
 	readonly onDidChangeHistoryItemRefs: Event<SourceControlHistoryItemRefsChangeEvent> = this._onDidChangeHistoryItemRefs.event;
 
 	private _HEAD: Branch | undefined;
-	private historyItemRefs: SourceControlHistoryItemRef[] = [];
+	private _historyItemRefs: SourceControlHistoryItemRef[] = [];
 
 	private historyItemDecorations = new Map<string, FileDecoration>();
 
@@ -87,6 +112,14 @@ export class GitHistoryProvider implements SourceControlHistoryProvider, FileDec
 			return;
 		}
 
+		// Refs (alphabetically)
+		const historyItemRefs = this.repository.refs
+			.map(ref => toSourceControlHistoryItemRef(this.repository, ref))
+			.sort((a, b) => a.id.localeCompare(b.id));
+
+		const delta = deltaHistoryItemRefs(this._historyItemRefs, historyItemRefs);
+		this._historyItemRefs = historyItemRefs;
+
 		let historyItemRefId = '';
 		let historyItemRefName = '';
 
@@ -105,8 +138,9 @@ export class GitHistoryProvider implements SourceControlHistoryProvider, FileDec
 						icon: new ThemeIcon('cloud')
 					} : undefined;
 
-					// Base - compute only if the branch has changed
+					// Base
 					if (this._HEAD?.name !== this.repository.HEAD.name) {
+						// Compute base if the branch has changed
 						const mergeBase = await this.resolveHEADMergeBase();
 
 						this._currentHistoryItemBaseRef = mergeBase &&
@@ -117,6 +151,17 @@ export class GitHistoryProvider implements SourceControlHistoryProvider, FileDec
 							revision: mergeBase.commit,
 							icon: new ThemeIcon('cloud')
 						} : undefined;
+					} else {
+						// Update base revision if it has changed
+						const mergeBaseModified = delta.modified
+							.find(ref => ref.id === this._currentHistoryItemBaseRef?.id);
+
+						if (this._currentHistoryItemBaseRef && mergeBaseModified) {
+							this._currentHistoryItemBaseRef = {
+								...this._currentHistoryItemBaseRef,
+								revision: mergeBaseModified.revision
+							};
+						}
 					}
 				} else {
 					// Detached commit
@@ -153,16 +198,9 @@ export class GitHistoryProvider implements SourceControlHistoryProvider, FileDec
 		this.logger.trace(`[GitHistoryProvider][onDidRunWriteOperation] currentHistoryItemRemoteRef: ${JSON.stringify(this._currentHistoryItemRemoteRef)}`);
 		this.logger.trace(`[GitHistoryProvider][onDidRunWriteOperation] currentHistoryItemBaseRef: ${JSON.stringify(this._currentHistoryItemBaseRef)}`);
 
-		// Refs (alphabetically)
-		const refs = await this.repository.getRefs({ sort: 'alphabetically' });
-		const historyItemRefs = refs.map(ref => toSourceControlHistoryItemRef(ref));
-
 		// Auto-fetch
 		const silent = result.operation.kind === OperationKind.Fetch && result.operation.showProgress === false;
-		const delta = deltaHistoryItemRefs(this.historyItemRefs, historyItemRefs);
 		this._onDidChangeHistoryItemRefs.fire({ ...delta, silent });
-
-		this.historyItemRefs = historyItemRefs;
 
 		const deltaLog = {
 			added: delta.added.map(ref => ref.id),
@@ -173,8 +211,8 @@ export class GitHistoryProvider implements SourceControlHistoryProvider, FileDec
 		this.logger.trace(`[GitHistoryProvider][onDidRunWriteOperation] historyItemRefs: ${JSON.stringify(deltaLog)}`);
 	}
 
-	async provideHistoryItemRefs(): Promise<SourceControlHistoryItemRef[]> {
-		const refs = await this.repository.getRefs();
+	async provideHistoryItemRefs(historyItemRefs: string[] | undefined): Promise<SourceControlHistoryItemRef[]> {
+		const refs = await this.repository.getRefs({ pattern: historyItemRefs });
 
 		const branches: SourceControlHistoryItemRef[] = [];
 		const remoteBranches: SourceControlHistoryItemRef[] = [];
@@ -183,13 +221,13 @@ export class GitHistoryProvider implements SourceControlHistoryProvider, FileDec
 		for (const ref of refs) {
 			switch (ref.type) {
 				case RefType.RemoteHead:
-					remoteBranches.push(toSourceControlHistoryItemRef(ref));
+					remoteBranches.push(toSourceControlHistoryItemRef(this.repository, ref));
 					break;
 				case RefType.Tag:
-					tags.push(toSourceControlHistoryItemRef(ref));
+					tags.push(toSourceControlHistoryItemRef(this.repository, ref));
 					break;
 				default:
-					branches.push(toSourceControlHistoryItemRef(ref));
+					branches.push(toSourceControlHistoryItemRef(this.repository, ref));
 					break;
 			}
 		}
@@ -227,15 +265,16 @@ export class GitHistoryProvider implements SourceControlHistoryProvider, FileDec
 			await ensureEmojis();
 
 			return commits.map(commit => {
-				const references = this.resolveHistoryItemRefs(commit);
+				const references = this._resolveHistoryItemRefs(commit);
 
 				return {
 					id: commit.hash,
 					parentIds: commit.parents,
 					message: emojify(commit.message),
 					author: commit.authorName,
+					authorEmail: commit.authorEmail,
 					icon: new ThemeIcon('git-commit'),
-					displayId: commit.hash.substring(0, 8),
+					displayId: getCommitShortHash(Uri.file(this.repository.root), commit.hash),
 					timestamp: commit.authorDate?.getTime(),
 					statistics: commit.shortStat ?? { files: 0, insertions: 0, deletions: 0 },
 					references: references.length !== 0 ? references : undefined
@@ -320,7 +359,7 @@ export class GitHistoryProvider implements SourceControlHistoryProvider, FileDec
 		return this.historyItemDecorations.get(uri.toString());
 	}
 
-	private resolveHistoryItemRefs(commit: Commit): SourceControlHistoryItemRef[] {
+	private _resolveHistoryItemRefs(commit: Commit): SourceControlHistoryItemRef[] {
 		const references: SourceControlHistoryItemRef[] = [];
 
 		for (const ref of commit.refNames) {
@@ -330,15 +369,8 @@ export class GitHistoryProvider implements SourceControlHistoryProvider, FileDec
 						id: ref.substring('HEAD -> '.length),
 						name: ref.substring('HEAD -> refs/heads/'.length),
 						revision: commit.hash,
+						category: l10n.t('branches'),
 						icon: new ThemeIcon('target')
-					});
-					break;
-				case ref.startsWith('tag: refs/tags/'):
-					references.push({
-						id: ref.substring('tag: '.length),
-						name: ref.substring('tag: refs/tags/'.length),
-						revision: commit.hash,
-						icon: new ThemeIcon('tag')
 					});
 					break;
 				case ref.startsWith('refs/heads/'):
@@ -346,6 +378,7 @@ export class GitHistoryProvider implements SourceControlHistoryProvider, FileDec
 						id: ref,
 						name: ref.substring('refs/heads/'.length),
 						revision: commit.hash,
+						category: l10n.t('branches'),
 						icon: new ThemeIcon('git-branch')
 					});
 					break;
@@ -354,22 +387,37 @@ export class GitHistoryProvider implements SourceControlHistoryProvider, FileDec
 						id: ref,
 						name: ref.substring('refs/remotes/'.length),
 						revision: commit.hash,
+						category: l10n.t('remote branches'),
 						icon: new ThemeIcon('cloud')
+					});
+					break;
+				case ref.startsWith('tag: refs/tags/'):
+					references.push({
+						id: ref.substring('tag: '.length),
+						name: ref.substring('tag: refs/tags/'.length),
+						revision: commit.hash,
+						category: l10n.t('tags'),
+						icon: new ThemeIcon('tag')
 					});
 					break;
 			}
 		}
 
-		return references;
+		return references.sort(compareSourceControlHistoryItemRef);
 	}
 
 	private async resolveHEADMergeBase(): Promise<Branch | undefined> {
-		if (this.repository.HEAD?.type !== RefType.Head || !this.repository.HEAD?.name) {
+		try {
+			if (this.repository.HEAD?.type !== RefType.Head || !this.repository.HEAD?.name) {
+				return undefined;
+			}
+
+			const mergeBase = await this.repository.getBranchBase(this.repository.HEAD.name);
+			return mergeBase;
+		} catch (err) {
+			this.logger.error(`[GitHistoryProvider][resolveHEADMergeBase] Failed to resolve merge base for ${this.repository.HEAD?.name}: ${err}`);
 			return undefined;
 		}
-
-		const mergeBase = await this.repository.getBranchBase(this.repository.HEAD.name);
-		return mergeBase;
 	}
 
 	dispose(): void {
